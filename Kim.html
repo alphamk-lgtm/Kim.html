@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stickman Fighting</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #111827;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    overflow-x: hidden;
+}
+
+h1 {
+    color: #facc15;
+    margin: 15px 0 5px;
+}
+
+#game {
+    display: block;
+    width: 100%;
+    max-width: 900px;
+    margin: auto;
+    background: #18243a;
+    border: 3px solid #facc15;
+    touch-action: none;
+}
+
+.hud {
+    max-width: 900px;
+    margin: 12px auto;
+    display: flex;
+    justify-content: space-around;
+    gap: 12px;
+}
+
+.player {
+    width: 42%;
+}
+
+.bar {
+    height: 18px;
+    background: #374151;
+    border: 2px solid white;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.health {
+    width: 100%;
+    height: 100%;
+    background: #22c55e;
+    transition: width 0.15s;
+}
+
+.controls {
+    max-width: 900px;
+    margin: 15px auto;
+    display: flex;
+    justify-content: space-around;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+button {
+    background: #facc15;
+    color: #111827;
+    border: none;
+    border-radius: 12px;
+    padding: 15px 18px;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+button:active {
+    transform: scale(0.94);
+    background: #fb923c;
+}
+
+#message {
+    color: #facc15;
+    font-size: 22px;
+    font-weight: bold;
+    min-height: 28px;
+}
+
+.instructions {
+    color: #d1d5db;
+    padding: 0 10px 15px;
+    font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🥊 STICKMAN FIGHTING</h1>
+
+<div class="hud">
+    <div class="player">
+        <b>PLAYER 1</b>
+        <div class="bar">
+            <div id="health1" class="health"></div>
+        </div>
+    </div>
+
+    <div class="player">
+        <b>PLAYER 2</b>
+        <div class="bar">
+            <div id="health2" class="health"></div>
+        </div>
+    </div>
+</div>
+
+<canvas id="game" width="900" height="430"></canvas>
+
+<div id="message">FIGHT!</div>
+
+<div class="controls">
+    <button id="left">⬅️ Left</button>
+    <button id="right">Right ➡️</button>
+    <button id="jump">⬆️ Jump</button>
+    <button id="punch">👊 Punch</button>
+    <button id="kick">🦵 Kick</button>
+    <button id="restart">🔄 Restart</button>
+</div>
+
+<p class="instructions">
+    Move with the buttons. On a computer, use A and D to move,
+    W to jump, F to punch and G to kick. The opponent fights back!
+</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const ground = 355;
+const keys = {};
+
+let gameOver = false;
+let lastTime = 0;
+
+function createFighter(x, color, direction) {
+    return {
+        x: x,
+        y: ground,
+        vx: 0,
+        vy: 0,
+        color: color,
+        dir: direction,
+        health: 100,
+        onGround: true,
+        attack: "",
+        attackTimer: 0,
+        cooldown: 0,
+        hurtTimer: 0
+    };
+}
+
+let p1, p2;
+
+function resetGame() {
+    p1 = createFighter(220, "#38bdf8", 1);
+    p2 = createFighter(680, "#fb7185", -1);
+    gameOver = false;
+    document.getElementById("message").textContent = "FIGHT!";
+    updateHealth();
+}
+
+resetGame();
+
+function updateHealth() {
+    document.getElementById("health1").style.width =
+        Math.max(0, p1.health) + "%";
+
+    document.getElementById("health2").style.width =
+        Math.max(0, p2.health) + "%";
+
+    document.getElementById("health1").style.background =
+        p1.health < 30 ? "#ef4444" : "#22c55e";
+
+    document.getElementById("health2").style.background =
+        p2.health < 30 ? "#ef4444" : "#22c55e";
+}
+
+function drawFighter(f) {
+    const moving = Math.abs(f.vx) > 0.5;
+    const swinging = f.attackTimer > 0;
+    const attackProgress = swinging
+        ? 1 - f.attackTimer / 18 : 0;
+
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.scale(f.dir, 1);
+
+    const headY = -105;
+    const shoulderY = -78;
+    const hipY = -38;
+
+    ctx.lineWidth = 8;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = f.hurtTimer > 0 ? "white" : f.color;
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(0, headY, 15, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Body
+    ctx.beginPath();
+    ctx.moveTo(0, headY + 16);
+    ctx.lineTo(0, hipY);
+    ctx.stroke();
+
+    // Arms
+    ctx.beginPath();
+    ctx.moveTo(0, shoulderY);
+    ctx.lineTo(-18, -62);
+    ctx.lineTo(-24, -43);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, shoulderY);
+
+    if (swinging && f.attack === "punch") {
+        ctx.lineTo(22 + attackProgress * 25, -80);
+        ctx.lineTo(55 + attackProgress * 50, -78);
+    } else if (swinging && f.attack === "kick") {
+        ctx.lineTo(18, -57);
+        ctx.lineTo(28, -48);
+    } else {
+        ctx.lineTo(18, -60);
+        ctx.lineTo(25, -43);
+    }
+    ctx.stroke();
+
+    // Legs
+    ctx.beginPath();
+    ctx.moveTo(0, hipY);
+    ctx.lineTo(moving ? -17 : -15, -18);
+    ctx.lineTo(moving ? -22 : -25, -5);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, hipY);
+    if (swinging && f.attack === "kick") {
+        ctx.lineTo(25, -48);
+        ctx.lineTo(60 + attackProgress * 35, -38);
+    } else {
+        ctx.lineTo(moving ? 18 : 15, -18);
+        ctx.lineTo(moving ? 25 : 25, -5);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawScene() {
+    const w = canvas.width;
+    const h = canvas.height;
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, h);
+    gradient.addColorStop(0, "#172554");
+    gradient.addColorStop(1, "#334155");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+
+    // Stars
+    ctx.fillStyle = "#e2e8f0";
+    for (let i = 0; i < 35; i++) {
+        const x = (i * 127 + 23) % w;
+        const y = (i * 61 + 19) % 210;
+        ctx.fillRect(x, y, 2, 2);
+    }
+
+    // Arena floor
+    ctx.fillStyle = "#475569";
+    ctx.fillRect(0, ground, w, h - ground);
+
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, ground);
+    ctx.lineTo(w, ground);
+    ctx.stroke();
+
+    // Floor markings
+    ctx.strokeStyle = "#64748b";
+    ctx.lineWidth = 2;
+    for (let x = 30; x < w; x += 60) {
+        ctx.beginPath();
+        ctx.moveTo(x, ground + 25);
+        ctx.lineTo(x + 25, h);
+        ctx.stroke();
+    }
+
+    drawFighter(p1);
+    drawFighter(p2);
+
+    if (gameOver) {
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.fillStyle = "#facc15";
+        ctx.font = "bold 48px Arial";
+        ctx.textAlign = "center";
+
+        const winner = p1.health > 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!";
+        ctx.fillText(winner, w / 2, h / 2);
+    }
+}
+
+function jump(f) {
+    if (!gameOver && f.onGround) {
+        f.vy = -420;
+        f.onGround = false;
+    }
+}
+
+function attack(f, type) {
+    if (gameOver || f.cooldown > 0) return;
+
+    f.attack = type;
+    f.attackTimer = 18;
+    f.cooldown = type === "kick" ? 38 : 25;
+
+    const opponent = f === p1 ? p2 : p1;
+
+    // Hit detection
+    const distance = Math.abs(f.x - opponent.x);
+    const inRange = distance < (type === "kick" ? 125 : 100);
+    const facing = (opponent.x - f.x) * f.dir > 0;
+
+    if (inRange && facing && opponent.hurtTimer <= 0) {
+        const damage = type === "kick" ? 12 : 8;
+        opponent.health = Math.max(0, opponent.health - damage);
+        opponent.hurtTimer = 14;
+        opponent.vx = f.dir * (type === "kick" ? 170 : 110);
+
+        updateHealth();
+
+        if (opponent.health <= 0) {
+            gameOver = true;
+            document.getElementById("message").textContent =
+                f === p1 ? "PLAYER 1 WINS! 🏆" : "PLAYER 2 WINS! 🏆";
+        }
+    }
+}
+
+function moveFighter(f, direction) {
+    if (gameOver) return;
+    f.vx = direction * 230;
+}
+
+function updateFighter(f, dt) {
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+
+    f.vy += 1000 * dt;
+
+    if (f.y >= ground) {
+        f.y = ground;
+        f.vy = 0;
+        f.onGround = true;
+    }
+
+    f.x = Math.max(35, Math.min(canvas.width - 35, f.x));
+
+    f.vx *= Math.pow(0.04, dt);
+
+    if (f.cooldown > 0) f.cooldown -= dt * 60;
+    if (f.attackTimer > 0) f.attackTimer -= dt * 60;
+    if (f.hurtTimer > 0) f.hurtTimer -= dt * 60;
+}
+
+function update(dt) {
+    if (gameOver) return;
+
+    // Player 1 keyboard controls
+    let direction = 0;
+
+    if (keys["a"]) direction--;
+    if (keys["d"]) direction++;
+
+    if (direction !== 0) moveFighter(p1, direction);
+
+    // Player 2 computer opponent
+    const distance = p1.x - p2.x;
+    p2.dir = distance >= 0 ? 1 : -1;
+
+    if (Math.abs(distance) > 85) {
+        moveFighter(p2, Math.sign(distance) * 0.8);
+    } else {
+        p2.vx = 0;
+
+        if (Math.random() < 0.025) {
+            attack(p2, Math.random() < 0.65 ? "punch" : "kick");
+        }
+
+        if (Math.random() < 0.008 && p2.onGround) {
+            jump(p2);
+        }
+    }
+
+    // Always face the opponent
+    p1.dir = p1.x < p2.x ? 1 : -1;
+
+    updateFighter(p1, dt);
+    updateFighter(p2, dt);
+}
+
+function loop(timestamp) {
+    const dt = Math.min((timestamp - lastTime) / 1000 || 0, 0.033);
+    lastTime = timestamp;
+
+    update(dt);
+    drawScene();
+
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+
+// Keyboard controls
+document.addEventListener("keydown", e => {
+    const key = e.key.toLowerCase();
+    keys[key] = true;
+
+    if ([" ", "arrowup", "arrowleft", "arrowright"].includes(key)) {
+        e.preventDefault();
+    }
+
+    if (e.repeat) return;
+
+    if (key === "w") jump(p1);
+    if (key === "f") attack(p1, "punch");
+    if (key === "g") attack(p1, "kick");
+    if (key === "r") resetGame();
+});
+
+document.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+});
+
+// Mobile controls: hold movement buttons to move
+function bindHold(id, callback) {
+    const button = document.getElementById(id);
+
+    button.addEventListener("pointerdown", e => {
+        e.preventDefault();
+        button.setPointerCapture(e.pointerId);
+        callback(true);
+    });
+
+    function stop(e) {
+        callback(false);
+    }
+
+    button.addEventListener("pointerup", stop);
+    button.addEventListener("pointercancel", stop);
+    button.addEventListener("lostpointercapture", stop);
+}
+
+bindHold("left", pressed => {
+    keys["a"] = pressed;
+});
+
+bindHold("right", pressed => {
+    keys["d"] = pressed;
+});
+
+document.getElementById("jump").addEventListener("pointerdown", e => {
+    e.preventDefault();
+    jump(p1);
+});
+
+document.getElementById("punch").addEventListener("pointerdown", e => {
+    e.preventDefault();
+    attack(p1, "punch");
+});
+
+document.getElementById("kick").addEventListener("pointerdown", e => {
+    e.preventDefault();
+    attack(p1, "kick");
+});
+
+document.getElementById("restart").addEventListener("click", resetGame);
+</script>
+
+</body>
+</html>
